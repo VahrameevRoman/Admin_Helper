@@ -74,6 +74,7 @@ namespace Admin_Helper
             if (listBoxProblems.SelectedIndex >= 0)
             {
                 selectedProblemId = GetSelectedProblemId(listBoxProblems.SelectedIndex);
+                ShowSolution(selectedProblemId);
             }
         }
         private int GetSelectedProblemId(int index)
@@ -93,11 +94,6 @@ namespace Admin_Helper
             db.CloseConnection();
             return id;
         }
-
-        private void btnShowSolution_Click(object sender, EventArgs e)
-        {
-            ShowSolution(selectedProblemId);
-        }
         private void ShowSolution(int problemId)
         {
             db.OpenConnection();
@@ -109,7 +105,103 @@ namespace Admin_Helper
             textBoxSolution.Visible = true;
             textBoxSolution.Text = solution ?? "Решение не найдено";
 
+            // Сделать кнопку редактирования доступной
+            btnEditSolution.Visible = true;
+
             db.CloseConnection();
+        }
+
+        // Обработчик для кнопки редактирования решения
+        private void btnEditSolution_Click(object sender, EventArgs e)
+        {
+            textBoxSolution.ReadOnly = false; // Разрешаем редактирование
+            btnSaveEdit.Visible = true; // Показываем кнопку сохранения
+        }
+
+        // Обработчик для кнопки сохранения решения
+        private void btnSaveEdit_Click(object sender, EventArgs e)
+        {
+            db.OpenConnection();
+            string query = "UPDATE solutions SET SolutionDescription = @SolutionDescription WHERE ProblemID = @ProblemID";
+            MySqlCommand command = new MySqlCommand(query, db.GetConnection());
+            command.Parameters.AddWithValue("@SolutionDescription", textBoxSolution.Text);
+            command.Parameters.AddWithValue("@ProblemID", selectedProblemId);
+
+            command.ExecuteNonQuery(); // Выполнили обновление решения
+            db.CloseConnection();
+
+            textBoxSolution.ReadOnly = true;
+            btnSaveEdit.Visible = false;
+        }
+
+        private void btnAddProblem_Click(object sender, EventArgs e)
+        {
+            using (AddProblemForm addProblemForm = new AddProblemForm())
+            {
+                addProblemForm.ShowDialog(); // Открыть форму как диалог
+            }
+            LoadProblems();
+        }
+
+        private void btnDeleteProblem_Click(object sender, EventArgs e)
+        {
+            // Проверка, выбрана ли проблема
+            if (listBoxProblems.SelectedItem == null)
+            {
+                MessageBox.Show("Пожалуйста, выберите проблему для удаления.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Подтверждение удаления
+            var confirmationResult = MessageBox.Show("Вы уверены, что хотите удалить выбранную проблему и её решение?", "Подтверждение", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (confirmationResult == DialogResult.Yes)
+            {
+                // Удалите проблему и её решение
+                DeleteProblemAndSolution(selectedProblemId);
+
+                // Обновите список проблем
+                LoadProblems();
+            }
+        }
+        private void DeleteProblemAndSolution(int problemId)
+        {
+            try
+            {
+                db.OpenConnection();
+
+                // Начинаем транзакцию
+                using (var transaction = db.GetConnection().BeginTransaction())
+                {
+                    // Удаляем решение, связанное с проблемой
+                    string deleteSolutionQuery = "DELETE FROM solutions WHERE ProblemID = @ProblemID";
+                    MySqlCommand deleteSolutionCommand = new MySqlCommand(deleteSolutionQuery, db.GetConnection(), transaction);
+                    deleteSolutionCommand.Parameters.AddWithValue("@ProblemID", problemId);
+                    deleteSolutionCommand.ExecuteNonQuery();
+
+                    // Затем удаляем саму проблему
+                    string deleteProblemQuery = "DELETE FROM problems WHERE ProblemID = @ProblemID";
+                    MySqlCommand deleteProblemCommand = new MySqlCommand(deleteProblemQuery, db.GetConnection(), transaction);
+                    deleteProblemCommand.Parameters.AddWithValue("@ProblemID", problemId);
+                    deleteProblemCommand.ExecuteNonQuery();
+
+                    // Подтверждаем транзакцию
+                    transaction.Commit();
+                }
+
+                MessageBox.Show("Проблема и её решение успешно удалены.", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при удалении проблемы: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                db.CloseConnection();
+            }
+            finally
+            {
+                db.CloseConnection();
+            }
+            LoadProblems();
+            textBoxSolution.Text = string.Empty;
         }
     }
     public class Category
